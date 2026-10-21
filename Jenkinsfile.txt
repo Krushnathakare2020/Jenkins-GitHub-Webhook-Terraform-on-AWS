@@ -1,0 +1,195 @@
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        GIT_REPO   = 'https://github.com/swapnibrad/3ri-batch-DevOps_0926b1668.git'
+        AWS_REGION = 'us-east-1'
+        TF_IN_AUTOMATION = 'true'
+    }
+
+    stages {
+
+        stage('Verify Repository') {
+            steps {
+                sh '''
+                    echo "Repository checked out by Jenkins"
+                    echo "Branch: ${GIT_BRANCH:-unknown}"
+                    pwd
+                    ls -la
+                '''
+            }
+        }
+
+
+        stage('Install Terraform ans AWS-CLI') {
+            steps {
+                sh '''
+                    
+                    sudo apt-get update
+                    sudo apt install awscli -y
+                    set -e
+                    aws --version
+                    aws sts get-caller-identity
+		    set -eu
+
+                    if ! command -v terraform >/dev/null 2>&1; then
+                        sudo apt-get update
+                        sudo apt-get install -y gnupg software-properties-common wget
+
+                        wget -O- https://apt.releases.hashicorp.com/gpg \
+                          | sudo gpg --dearmor \
+                              -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
+                        echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg arch=$(dpkg --print-architecture)] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" \
+                          | sudo tee /etc/apt/sources.list.d/hashicorp.list
+
+                        sudo apt-get update
+                        sudo apt-get install -y terraform
+                    fi
+
+                    terraform version
+                    
+
+                '''
+            }
+        }
+
+        stage('Configure AWS Credentials') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'aws-access-key-id',
+                        variable: 'AWS_ACCESS_KEY_ID'
+                    ),
+                    string(
+                        credentialsId: 'aws-secret-access-key',
+                        variable: 'AWS_SECRET_ACCESS_KEY'
+                    )
+                ]) {
+                    sh '''
+                        set +x
+                        set -eu
+
+                        export AWS_DEFAULT_REGION="$AWS_REGION"
+
+                        aws sts get-caller-identity \
+                          --query Account \
+                          --output text
+
+                        terraform version
+                    '''
+                }
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id',
+                           variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key',
+                           variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh '''
+                        set +x
+                        export AWS_DEFAULT_REGION="$AWS_REGION"
+                        terraform init -input=false
+                    '''
+                }
+            }
+        }
+
+        stage('Terraform Format and Validate') {
+            steps {
+                sh '''
+                    terraform fmt -check -recursive
+                    terraform validate
+                '''
+            }
+        }
+
+        stage('Terraform Plan') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id',
+                           variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key',
+                           variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh '''
+                        set +x
+                        export AWS_DEFAULT_REGION="$AWS_REGION"
+
+                        terraform plan \
+                          -input=false \
+                          -out=tfplan
+
+                        terraform show -no-color tfplan
+                    '''
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id',
+                           variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key',
+                           variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh '''
+                        set +x
+                        export AWS_DEFAULT_REGION="$AWS_REGION"
+
+                        terraform apply \
+                          -input=false \
+                          -auto-approve \
+                          tfplan
+                    '''
+                }
+            }
+        }
+
+
+        stage('Terraform Output') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id',
+                           variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key',
+                           variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh '''
+                        set +x
+                        export AWS_DEFAULT_REGION="$AWS_REGION"
+
+                        echo "===== Terraform Outputs ====="
+                        terraform output
+                        echo "===== Output JSON ====="
+                        terraform output -json
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Terraform pipeline completed successfully.'
+        }
+        failure {
+            echo 'Terraform pipeline failed. Review the Jenkins console log.'
+        }
+        always {
+            sh 'rm -f tfplan'
+            cleanWs()
+        }
+    }
+}
