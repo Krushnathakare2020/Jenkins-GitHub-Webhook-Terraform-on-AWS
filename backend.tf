@@ -1,6 +1,6 @@
 terraform {
   backend "s3" {
-    bucket       = "mrunal-devops-0926b1668"
+    bucket       = "krushna-11-08-2004"
     key          = "dev/terraform.tfstate"
     region       = "us-east-1"
     encrypt      = true

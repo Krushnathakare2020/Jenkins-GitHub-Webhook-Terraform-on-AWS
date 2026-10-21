@@ -9,4 +9,4 @@ key_name = "my_instance_key"
 
 # Replace with your actual public IP address
 # Example format: "203.0.113.10/32"
-ssh_cidr = "49.36.44.146/32"
+ssh_cidr = "152.56.5.30/32"

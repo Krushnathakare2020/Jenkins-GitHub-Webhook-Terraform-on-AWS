@@ -8,7 +8,7 @@ pipeline {
     }
 
     environment {
-        GIT_REPO   = 'https://github.com/swapnibrad/3ri-batch-DevOps_0926b1668.git'
+        GIT_REPO   = 'https://github.com/Krushnathakare2020/Jenkins-GitHub-Webhook-Terraform-on-AWS'
         AWS_REGION = 'us-east-1'
         TF_IN_AUTOMATION = 'true'
     }
